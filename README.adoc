@@ -1,20 +1,24 @@
-= Create a Vert.x Event Bus Service with Service Proxy
+= Neo4j Graph Query API with Vert.x
 :page-permalink: /
-:page-github: vertx-howtos/service-proxy-howto
+:page-github: vertx-howtos/neo4j-graph-api
 
-This document will show you how to bootstrap an Event Bus service using Vert.x Service Proxy module.
-As you will see, this approach is particularly useful when you want to design and consume a service on the event bus using plain Java interfaces.
+This document shows how to build a Vert.x application that loads configuration from a YAML file, sets up an HTTP API, and periodically logs service status. The application supports Cypher query execution via Neo4j and integrates configuration-driven behavior.
 
 == What you will build
 
-You will build a Vert.x application that exposes and uses `BarmanService`, an Event Bus Service that generates beers and manages customer bills.
-We are going to deploy two verticles: the `BarmanVerticle` that exposes the service and the `DrunkVerticle` that consumes the service
+You will build a Vert.x application that:
+
+* Loads Cypher queries from a `config.yaml` file
+* Starts a RESTful endpoint (`/query`) to execute Cypher queries against Neo4j
+* Periodically logs available entity-query mappings
+* Uses Vert.x config retriever, web router, and periodic timers
 
 == What you need
 
-* A text editor or IDE
-* Java 11 higher
+* Java 11 or higher
 * Maven
+* A running Neo4j instance
+* `src/main/resources/config.yaml` with the appropriate format
 
 == Create a project
 
@@ -26,139 +30,92 @@ Here is the content of the `pom.xml` file you should be using:
 include::pom.xml[]
 ----
 
-You must import both `vertx-codegen` with `processor` classifier and `vertx-service-proxy`.
-We are going to use `vertx-web-client` to load the beer names.
+The project uses:
 
-== Design the `BarmanService`
+- `vertx-config` for dynamic configuration loading
+- `vertx-web` for routing and REST endpoints
+- `jackson-databind` for response serialization
+- `neo4j-java-driver` for database access
 
-First, we must define our service interface.
-Under the hood, a code generator analyze it and generates the event bus message handler and the proxy class.
+== Design the Configuration
 
-This is the `BarmanService` interface:
+The application loads a YAML config file with entity-to-Cypher query mappings:
 
-[source,java,indent=0]
+[source,yaml]
 ----
-include::src/main/java/io/vertx/howtos/ebservice/beers/BarmanService.java[]
-----
-
-<1> Add `@VertxGen` and `@ProxyGen` to trigger code generation
-<2> Define the method that generates a new beer and adds it to the bill of the customer specified.
-When the beer is ready, the `Future` is completed.
-<3> Define the method that retrieves the bill.
-<4> Define the method that settles the bill.
-This is a fire and forget method.
-<5> Specify the method that creates a new proxy.
-`BarmanServiceVertxEBProxy` is the class name of the proxy that the code generator will create for us.
-
-There are a couple of rules you must follow when defining the service interface.
-Look at http://vertx.io/docs/vertx-service-proxy/java/#_restrictions_for_service_interface[Restrictions for service interface] for more info.
-In our interface, we are using a couple of primitives and `Beer`, a POJO annotated as `@DataObject`.
-If you want to use types annotated with `DataObject` inside your interface, they must define both a constructor with only a `JsonObject` parameter and a `toJson()` method that returns a `JsonObject`.
-
-To trigger the code generation, you must also add in the same package of the interface a `package-info.java` with `@ModuleGen` annotation:
-
-[source,java,indent=0]
-----
-include::src/main/java/io/vertx/howtos/ebservice/beers/package-info.java[]
+neo4jQueries:
+  entitiesToCypherQueries:
+    - entityPair: "Person-Friends"
+      query: "MATCH (p:Person)-[:KNOWS]->(f:Person) RETURN p, f"
+    - entityPair: "City-LocatedIn"
+      query: "MATCH (c:City)-[:LOCATED_IN]->(r:Region) RETURN c, r"
 ----
 
-== Implement the `BarmanService`
+== Implement the Verticle
 
-Now you can implement the `BarmanService`.
+The core logic resides in `Neo4jGraphVerticle`:
 
-For `giveMeARandomBeer()`:
-
-[source,java,indent=0]
+[source,java]
 ----
-include::src/main/java/io/vertx/howtos/ebservice/beers/impl/BarmanServiceImpl.java[tags=giveMeARandomBeer]
+include::src/main/java/io/vertx/neo4vertx/service/Neo4jGraphVerticle.java[]
 ----
 
-<1> Send a request to the https://www.craftbeernamegenerator.com[Craft Beer Name Generator Service]
-<2> Fail the async method if the request to external service failed
-<3> Create a new `Beer`
-<4> Add the beer to the customer bill
+<1> Loads config using `ConfigRetriever` with a YAML file from the classpath
+<2> Extracts and maps `entityPair` to Cypher queries
+<3> Starts an HTTP server with `/query` POST endpoint
+<4> Logs supported queries every 5 seconds via `vertx.setPeriodic()`
+<5> Uses a helper class (`RemoteGraphService`) to execute queries against Neo4j
 
-For `getMyBill()`:
+== Run the application
 
-[source,java,indent=0]
-----
-include::src/main/java/io/vertx/howtos/ebservice/beers/impl/BarmanServiceImpl.java[tags=getMyBill]
-----
+You can run the application using:
 
-For `settleMyBill()`:
+. Your IDE, by running the `main` method in `Neo4jGraphVerticle`, or
+. With Maven: `mvn compile exec:java`
 
-[source,java,indent=0]
-----
-include::src/main/java/io/vertx/howtos/ebservice/beers/impl/BarmanServiceImpl.java[tags=payMyBill]
-----
-
-== Expose the service
-
-Now we can expose the service inside the `BarmanVerticle` with the `ServiceBinder` class:
-
-[source,java,indent=0]
-----
-include::src/main/java/io/vertx/howtos/ebservice/BarmanVerticle.java[]
-----
-
-<1> Instantiate the `BarmanServiceImpl`
-<2> Instantiate the `ServiceBinder`
-<3> Configure the service address
-<4> Register the service on the event bus
-
-== Use the service
-
-Now we can use the service with the generated proxy.
-For demo purposes, we're going to use it inside another verticle called `DrunkVerticle`:
-
-[source,java,indent=0]
-----
-include::src/main/java/io/vertx/howtos/ebservice/DrunkVerticle.java[]
-----
-
-<1> Instantiate the proxy
-<2> Let's try the first beer 🍺
-<3> Drinking the first one 🍻
-<4> Give me another one 🍺
-<5> Drinking the second one 🍻
-<6> Time to go home.
-Give me the bill
-<7> Pay the bill
-
-== Running the application
-
-To run the application deploy the `BarmanVerticle` and subsequently the `DrunkVerticle`.
-
-[source,java,indent=0]
-----
-include::src/main/java/io/vertx/howtos/ebservice/BeersApplication.java[]
-----
-
-You can run the application from:
-
-. your IDE, by running the `main` method from the `BeersApplication` class, or
-. with Maven: `mvn compile exec:java`
-
-You should see something like this:
+Expected output (if everything is configured properly):
 
 ----
-The barman is ready to serve you
-Generated a new Beer! Manticore's Shorthand Barleywine (Barleywine)
-My first beer is a Manticore's Shorthand Barleywine and it costs 6€
-Generated a new Beer! Fortunate Pretzel (Cream Ale)
-My second beer is a Fortunate Pretzel and it costs 6€
-My bill with the bar is 12€
-Removed debt of homer
+Starting Neo4j Graph Verticle
+Configuration retrieved:
+{
+  "neo4jQueries": {
+    "entitiesToCypherQueries": [...]
+  }
+}
+neo4j service proxy standby...
+Supported queries: [Person-Friends, City-LocatedIn]
+HTTP server started on http://localhost:8090/
 ----
+
+== Using the API
+
+You can query the service using `curl`:
+
+[source,bash]
+----
+curl -X POST http://localhost:8090/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "Person-Friends",
+    "variables": {
+      "$name": "Alice"
+    }
+  }'
+----
+
+The service will fetch the Cypher query for `Person-Friends`, substitute variables, and send it to Neo4j.
 
 == Summary
 
-This how-to explained to you:
+This how-to explained how to:
 
-. How to design and implement an Event Bus Service using Vert.x Service Proxy, and
-. How to expose the service on the event bus, and
-. How to use the service
+. Use `ConfigRetriever` to load YAML configuration
+. Map configuration to Neo4j queries
+. Create an HTTP API in Vert.x using `Router`
+. Periodically log service status using `setPeriodic()`
 
 == See also
 
-* http://vertx.io/docs/vertx-service-proxy/java/[Vert.x Service Proxy Documentation]
+* https://vertx.io/docs/vertx-config/java/[Vert.x Config Documentation]
+* https://neo4j.com/docs/java-reference/current/[Neo4j Java Driver Reference]

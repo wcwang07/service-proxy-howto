@@ -1,0 +1,4 @@
+
+neo4jQueries:
+  Person: "MATCH (p:Person {name: $name}) RETURN p"
+  City: "MATCH (c:City {name: $name}) RETURN c"
