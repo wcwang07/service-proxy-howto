@@ -45,19 +45,17 @@ public class RemoteGraphService implements GraphService {
     sessionAsync.executeReadAsync(tx -> tx.runAsync(query)
       .thenCompose(resultCursor -> {
         CompletionStage<ResultSummary> results = resultCursor.forEachAsync(record -> {
-          context.runOnContext(v -> {
-            for (Value value : record.values()) {
-              if (value instanceof Node) {
-                String entityName = value.asNode().labels().iterator().next();
-                Map<String, Object> entityValueMap = new ConcurrentHashMap<>(value.asMap());
-                responseMap.computeIfAbsent(entityName, k -> new HashMap<String, Object>(entityValueMap));
-              }
-              else {
-                Map<String, Object> entityValueMap = new ConcurrentHashMap<>(value.asMap());
-                responseMap.putAll(entityValueMap);
-              }
+          for (Value value : record.values()) {
+            if (value instanceof Node) {
+              String entityName = value.asNode().labels().iterator().next();
+              Map<String, Object> entityValueMap = new ConcurrentHashMap<>(value.asMap());
+              responseMap.computeIfAbsent(entityName, k -> new HashMap<String, Object>(entityValueMap));
             }
-          });
+            else {
+              Map<String, Object> entityValueMap = new ConcurrentHashMap<>(value.asMap());
+              responseMap.putAll(entityValueMap);
+            }
+          }
         });
         return results;
       })
