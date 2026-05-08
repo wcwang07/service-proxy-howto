@@ -1,4 +1,6 @@
-
 neo4jQueries:
-  Person: "MATCH (p:Person {name: $name}) RETURN p"
-  City: "MATCH (c:City {name: $name}) RETURN c"
+  entitiesToCypherQueries:
+    - entityPair: "Person"
+      query: "MATCH (p:Person {name: $name}) RETURN p"
+    - entityPair: "City"
+      query: "MATCH (c:City {name: $name}) RETURN c"

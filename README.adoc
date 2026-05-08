@@ -73,6 +73,24 @@ You can run the application using:
 . Your IDE, by running the `main` method in `Neo4jGraphVerticle`, or
 . With Maven: `mvn compile exec:java`
 
+== Run with Docker Compose
+
+You can run the service and a local Neo4j instance with:
+
+[source,bash]
+----
+docker compose up --build
+----
+
+The HTTP API is exposed at `http://localhost:8090/query`, and Neo4j Browser is exposed at `http://localhost:7474`.
+
+The service reads Neo4j connection settings from environment variables:
+
+* `NEO4J_URI`
+* `NEO4J_USER`
+* `NEO4J_PASSWORD`
+* `NEO4J_DATABASE`
+
 Expected output (if everything is configured properly):
 
 ----

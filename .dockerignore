@@ -1,0 +1,11 @@
+target/
+.git/
+.idea/
+.gradle/
+.vertx/
+build/
+_site/
+Gemfile.lock
+*.iml
+*.iws
+*.ipr

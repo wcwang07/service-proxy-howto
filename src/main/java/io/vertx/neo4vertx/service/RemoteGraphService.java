@@ -24,23 +24,26 @@ import org.neo4j.driver.types.Node;
 public class RemoteGraphService implements GraphService {
 
   private Vertx vertx;
-
-  private static final SessionConfig
-    DEFAULT_READ_SESSION_CONFIG = SessionConfig.builder()
-    .withDatabase("identitynetworktwodb")
-    .withDefaultAccessMode(AccessMode.READ)
-    .build();
   private Driver driver;
+  private SessionConfig readSessionConfig;
 
   public RemoteGraphService(Vertx vertx, String dbUri, String dbUser, String dbPassword) {
+    this(vertx, dbUri, dbUser, dbPassword, "identitynetworktwodb");
+  }
+
+  public RemoteGraphService(Vertx vertx, String dbUri, String dbUser, String dbPassword, String dbDatabase) {
     this.vertx = vertx;
+    this.readSessionConfig = SessionConfig.builder()
+      .withDatabase(dbDatabase)
+      .withDefaultAccessMode(AccessMode.READ)
+      .build();
     this.driver = new Neo4jHolder(dbUri, dbUser, dbPassword).neo4jDriver();
   }
 
   @Override
   public void query(String query, Handler<AsyncResult<Map<String, Object>>> resultHandler) {
     Context context = vertx.getOrCreateContext();
-    AsyncSession sessionAsync = driver.session(AsyncSession.class, DEFAULT_READ_SESSION_CONFIG);
+    AsyncSession sessionAsync = driver.session(AsyncSession.class, readSessionConfig);
     Map<String, Object> responseMap = new ConcurrentHashMap<>();
     sessionAsync.executeReadAsync(tx -> tx.runAsync(query)
       .thenCompose(resultCursor -> {

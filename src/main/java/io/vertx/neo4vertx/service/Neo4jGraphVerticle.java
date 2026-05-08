@@ -9,7 +9,6 @@ import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpMethod;
-import io.vertx.core.http.HttpServer;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
@@ -59,7 +58,6 @@ public class Neo4jGraphVerticle extends AbstractVerticle {
       }
 
       JsonObject result = ar.result();
-      ConcurrentHashMap<String, Object> config = new ConcurrentHashMap<>(result.getMap());
       logger.info("Configuration retrieved:" + result.encodePrettily());
 
       Map<String, Object> entityQueriesMap = new HashMap<>();
@@ -94,10 +92,11 @@ public class Neo4jGraphVerticle extends AbstractVerticle {
       Router router = Router.router(vertx);
       router.route().handler(BodyHandler.create());
 
-      final String dbUri = "neo4j://localhost";
-      final String dbUser = "neo4j";
-      final String dbPassword = "neo4j";
-      RemoteGraphService remoteGraphService = new RemoteGraphService(vertx, dbUri, dbUser, dbPassword);
+      final String dbUri = getEnv("NEO4J_URI", "neo4j://localhost");
+      final String dbUser = getEnv("NEO4J_USER", "neo4j");
+      final String dbPassword = getEnv("NEO4J_PASSWORD", "neo4j");
+      final String dbDatabase = getEnv("NEO4J_DATABASE", "identitynetworktwodb");
+      RemoteGraphService remoteGraphService = new RemoteGraphService(vertx, dbUri, dbUser, dbPassword, dbDatabase);
 
       router.route(HttpMethod.POST, "/query").handler(ctx -> {
         JsonObject json = ctx.body().asJsonObject();
@@ -147,5 +146,10 @@ public class Neo4jGraphVerticle extends AbstractVerticle {
     logger.info("Starting application...");
     Vertx vertx = Vertx.vertx();
     vertx.deployVerticle(new Neo4jGraphVerticle());
+  }
+
+  private static String getEnv(String name, String defaultValue) {
+    String value = System.getenv(name);
+    return StringUtils.isBlank(value) ? defaultValue : value;
   }
 }
